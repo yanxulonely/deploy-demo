@@ -1,47 +1,142 @@
-name: Deploy to Tencent Cloud
+name: 🚀 CI/CD 自动部署
 
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ main, master ]
+
+# 并发控制，防止同时部署
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  # 代码质量检查
+  lint-and-test:
     runs-on: ubuntu-latest
-    
+    name: 🔍 代码检查
     steps:
-    - name: Checkout code
+    - name: 检出代码
       uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
+    - name: 设置 Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: 安装前端依赖
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: 前端代码检查
+      working-directory: ./frontend
+      run: npm run build
+      continue-on-error: true
+
+  # 构建和部署
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.event_name == 'push'
+    name: 🏗️ 构建部署
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 设置部署时间戳
+      id: timestamp
+      run: echo "timestamp=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+    - name: 设置 Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Build backend
+    - name: 登录 Docker Hub (可选)
+      uses: docker/login-action@v3
+      if: ${{ secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD }}
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: 构建后端镜像
       uses: docker/build-push-action@v5
       with:
         context: ./backend
         push: false
-        tags: demo-backend:latest
+        tags: demo-backend:${{ steps.timestamp.outputs.timestamp }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Build frontend
+    - name: 构建前端镜像
       uses: docker/build-push-action@v5
       with:
         context: ./frontend
         push: false
-        tags: demo-frontend:latest
+        tags: demo-frontend:${{ steps.timestamp.outputs.timestamp }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Deploy to server via SSH
+    - name: 部署到服务器
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        port: ${{ secrets.SERVER_PORT || 22 }}
+        script: |
+          echo "🚀 开始部署..."
+          cd /root/.openclaw/workspace/deploy-demo
+          
+          echo "📥 拉取最新代码..."
+          git pull origin main
+          
+          echo "🛑 停止旧容器..."
+          docker-compose down
+          
+          echo "🧹 清理旧镜像..."
+          docker image prune -f
+          
+          echo "🏗️ 构建并启动新容器..."
+          docker-compose up -d --build
+          
+          echo "⏳ 等待服务启动..."
+          sleep 10
+          
+          echo "✅ 检查服务状态..."
+          docker-compose ps
+          
+          echo "📊 查看日志..."
+          docker-compose logs --tail=20
+
+    - name: 部署成功通知
+      if: success()
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.SERVER_HOST }}
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
         script: |
-          cd /root/.openclaw/workspace/deploy-demo
-          git pull origin main
-          docker-compose down
-          docker-compose up -d --build
-          docker image prune -f
+          echo "部署时间：$(date)" >> /tmp/deploy.log
+          echo "部署版本：${{ github.sha }}" >> /tmp/deploy.log
+          echo "---" >> /tmp/deploy.log
+
+  # 部署失败通知
+  notify-failure:
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+    if: failure()
+    name: ❌ 失败通知
+    steps:
+    - name: 发送失败通知
+      run: |
+        echo "部署失败！请检查 GitHub Actions 日志。"
+        echo "提交：${{ github.sha }}"
+        echo "分支：${{ github.ref }}"
