@@ -1,17 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Title, Text, Container, Paper, Group, Badge, 
   Timeline, Box, ThemeIcon, Stack, Card, 
-  SimpleGrid, Button, Divider, List, ThemeIcon as MantineThemeIcon
+  SimpleGrid, Button, Divider, List, Modal, ScrollArea, Code,
+  Anchor, Drawer, Table, Blockquote, Mark
 } from '@mantine/core';
 import { 
   IconBook, IconBrain, IconCode, IconCloud, 
   IconRobot, IconDatabase, IconExternalLink,
-  IconChevronRight, IconStar, IconCurrencyDollar
+  IconChevronRight, IconCurrencyDollar, IconQuote
 } from '@tabler/icons-react';
 
 function KnowledgePage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [openedModal, setOpenedModal] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState(null);
+  const [documents, setDocuments] = useState([]);
+
+  // 加载文档数据
+  useEffect(() => {
+    fetch('/data/documents.json')
+      .then(res => res.json())
+      .then(data => setDocuments(data.documents))
+      .catch(err => console.error('加载文档失败:', err));
+  }, []);
 
   const categories = [
     { key: 'all', label: '全部', icon: IconBook },
@@ -23,89 +35,185 @@ function KnowledgePage() {
     { key: 'skills', label: 'OpenClaw 技能', icon: IconDatabase },
   ];
 
-  const knowledgeBase = [
-    {
-      title: '什么是 LLM 大模型？',
-      category: 'basic',
-      description: '了解大型语言模型的基础概念、工作原理和应用场景',
-      icon: IconBrain,
-      color: 'blue',
-      tags: ['入门', '基础概念'],
-      path: '00-AI 入门与概念/什么是 LLM 大模型.md'
-    },
-    {
-      title: 'Claude 系列模型详解',
-      category: 'models',
-      description: 'Anthropic 的 Claude Haiku/Sonnet/Opus 对比与使用建议',
-      icon: IconRobot,
-      color: 'orange',
-      tags: ['Claude', '模型对比'],
-      path: '01-主流 AI 模型详解/Claude 系列.md'
-    },
-    {
-      title: 'GPT 系列模型详解',
-      category: 'models',
-      description: 'OpenAI 的 GPT-4o/GPT-4 Turbo/o1 模型全解析',
-      icon: IconRobot,
-      color: 'green',
-      tags: ['GPT', 'OpenAI'],
-      path: '01-主流 AI 模型详解/GPT 系列.md'
-    },
-    {
-      title: 'AI 模型价格对比表',
-      category: 'pricing',
-      description: '2026 最新主流大模型价格对比，帮你选性价比最高的',
-      icon: IconCurrencyDollar,
-      color: 'grape',
-      tags: ['价格', '性价比', '优惠'],
-      path: '02-模型能力与价格对比/价格对比表.md'
-    },
-    {
-      title: 'AI 编程实战指南',
-      category: 'coding',
-      description: '用 AI 提升编程效率 10 倍，包含 Claude Code、Copilot 等工具',
-      icon: IconCode,
-      color: 'cyan',
-      tags: ['编程', '实战', '工具'],
-      path: '03-AI 编程辅助/AI 编程实战指南.md'
-    },
-    {
-      title: 'Ollama 本地部署完全指南',
-      category: 'local',
-      description: '在本地运行开源大模型，免费、隐私、无限制',
-      icon: IconCloud,
-      color: 'teal',
-      tags: ['Ollama', '本地部署', '开源'],
-      path: '04-本地模型部署/Ollama 完全指南.md'
-    },
-    {
-      title: 'OpenClaw 技能目录',
-      category: 'skills',
-      description: '已安装技能清单与使用说明，包含 5 个核心技能',
-      icon: IconDatabase,
-      color: 'pink',
-      tags: ['OpenClaw', '技能', '工具'],
-      path: '05-OpenClaw 技能库/技能目录.md'
-    },
-    {
-      title: '实战项目合集',
-      category: 'skills',
-      description: '学完就练，实战提升，包含天气监控、AI 知识库等项目',
-      icon: IconCode,
-      color: 'red',
-      tags: ['项目', '实战', '案例'],
-      path: '06-实战项目/README.md'
-    },
-    {
-      title: 'AI 学习资源索引',
-      category: 'basic',
-      description: '精选学习资源，从小白到专家，包含文档、课程、社区',
-      icon: IconBook,
-      color: 'indigo',
-      tags: ['资源', '学习', '教程'],
-      path: '99-资源与工具/学习资源索引.md'
-    },
-  ];
+  const iconMap = {
+    brain: IconBrain,
+    robot: IconRobot,
+    'currency-dollar': IconCurrencyDollar,
+    code: IconCode,
+    cloud: IconCloud,
+    database: IconDatabase,
+    book: IconBook,
+  };
+
+  const filteredKnowledge = selectedCategory === 'all' 
+    ? documents
+    : documents.filter(item => item.category === selectedCategory);
+
+  const handleViewDetail = (doc) => {
+    setSelectedDoc(doc);
+    setOpenedModal(true);
+  };
+
+  // 增强的 Markdown 渲染
+  const renderMarkdown = (content) => {
+    const lines = content.split('\n');
+    const elements = [];
+    let inCodeBlock = false;
+    let codeBlockContent = [];
+    let listItems = [];
+    let tableRows = [];
+    let inTable = false;
+    
+    const flushList = () => {
+      if (listItems.length > 0) {
+        elements.push(
+          <List key={`list-${elements.length}`} mb="md">
+            {listItems.map((item, i) => (
+              <List.Item key={i} mb="xs">{item}</List.Item>
+            ))}
+          </List>
+        );
+        listItems = [];
+      }
+    };
+    
+    const flushTable = () => {
+      if (tableRows.length > 1) {
+        const headers = tableRows[0];
+        const data = tableRows.slice(2); // 跳过分隔行
+        elements.push(
+          <Table key={`table-${elements.length}`} striped highlightOnHover withTableBorder mb="md">
+            <Table.Thead>
+              <Table.Tr>
+                {headers.map((h, i) => (
+                  <Table.Th key={i}>{h}</Table.Th>
+                ))}
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {data.map((row, i) => (
+                <Table.Tr key={i}>
+                  {row.map((cell, j) => (
+                    <Table.Td key={j}>{cell}</Table.Td>
+                  ))}
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        );
+        tableRows = [];
+        inTable = false;
+      }
+    };
+    
+    // 处理行内样式
+    const processInline = (text) => {
+      // 加粗 **text**
+      text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      // 斜体 *text*
+      text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+      // 行内代码 `code`
+      text = text.replace(/`(.*?)`/g, '<code style="background: #f1f3f5; padding: 2px 6px; border-radius: 3px;">$1</code>');
+      // 链接 [text](url)
+      text = text.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      return text;
+    };
+    
+    lines.forEach((line, index) => {
+      // 代码块
+      if (line.startsWith('```')) {
+        flushList();
+        flushTable();
+        if (inCodeBlock) {
+          elements.push(
+            <Code key={index} block mb="md">
+              {codeBlockContent.join('\n')}
+            </Code>
+          );
+          codeBlockContent = [];
+        }
+        inCodeBlock = !inCodeBlock;
+        return;
+      }
+      
+      if (inCodeBlock) {
+        codeBlockContent.push(line);
+        return;
+      }
+      
+      // 表格检测
+      if (line.includes('|') && line.trim().startsWith('|')) {
+        flushList();
+        inTable = true;
+        const cells = line.split('|').map(c => c.trim()).filter(c => c);
+        // 跳过分隔行 (|---|---|)
+        if (!cells.every(c => c.match(/^[-:|]+$/))) {
+          tableRows.push(cells);
+        }
+        return;
+      } else if (inTable) {
+        flushTable();
+      }
+      
+      // 标题
+      if (line.startsWith('# ')) {
+        flushList();
+        elements.push(<Title key={index} order={1} mt="xl" mb="md" dangerouslySetInnerHTML={{__html: processInline(line.replace('# ', ''))}} />);
+        return;
+      }
+      if (line.startsWith('## ')) {
+        flushList();
+        elements.push(<Title key={index} order={2} mt="xl" mb="md" dangerouslySetInnerHTML={{__html: processInline(line.replace('## ', ''))}} />);
+        return;
+      }
+      if (line.startsWith('### ')) {
+        flushList();
+        elements.push(<Title key={index} order={3} mt="lg" mb="md" dangerouslySetInnerHTML={{__html: processInline(line.replace('### ', ''))}} />);
+        return;
+      }
+      // 引用
+      if (line.startsWith('> ')) {
+        flushList();
+        elements.push(
+          <Blockquote key={index} icon={<IconQuote />} mb="md">
+            <Text dangerouslySetInnerHTML={{__html: processInline(line.replace('> ', ''))}} />
+          </Blockquote>
+        );
+        return;
+      }
+      // 列表
+      if (line.startsWith('- ') || line.startsWith('* ')) {
+        listItems.push(processInline(line.replace(/^[*-] /, '')));
+        return;
+      }
+      // 分割线
+      if (line.startsWith('---')) {
+        flushList();
+        elements.push(<Divider key={index} my="md" />);
+        return;
+      }
+      // 空行
+      if (line.trim() === '') {
+        flushList();
+        elements.push(<br key={index} />);
+        return;
+      }
+      // 普通文本
+      flushList();
+      elements.push(<Text key={index} mb="xs" dangerouslySetInnerHTML={{__html: processInline(line)}} />);
+    });
+    
+    flushList();
+    flushTable();
+    if (inCodeBlock && codeBlockContent.length > 0) {
+      elements.push(
+        <Code block mb="md">
+          {codeBlockContent.join('\n')}
+        </Code>
+      );
+    }
+    return elements;
+  };
 
   const installedSkills = [
     { name: 'ai-learning-journal', version: '1.0.1', desc: 'AI 学习记录', status: '✅' },
@@ -114,10 +222,6 @@ function KnowledgePage() {
     { name: 'local-first-llm', version: '1.0.0', desc: '本地优先路由', status: '✅' },
     { name: 'coding-sessions', version: '1.0.0', desc: 'AI 编程会话', status: '✅' },
   ];
-
-  const filteredKnowledge = selectedCategory === 'all' 
-    ? knowledgeBase 
-    : knowledgeBase.filter(item => item.category === selectedCategory);
 
   return (
     <div>
@@ -148,7 +252,7 @@ function KnowledgePage() {
             </ThemeIcon>
             <div>
               <Text size="xs" c="dimmed">文档数量</Text>
-              <Text size="xl" fw={700}>11 篇</Text>
+              <Text size="xl" fw={700}>{documents.length}篇</Text>
             </div>
           </Group>
         </Paper>
@@ -170,7 +274,7 @@ function KnowledgePage() {
             </ThemeIcon>
             <div>
               <Text size="xs" c="dimmed">知识分类</Text>
-              <Text size="xl" fw={700}>8 个</Text>
+              <Text size="xl" fw={700}>7 个</Text>
             </div>
           </Group>
         </Paper>
@@ -209,7 +313,7 @@ function KnowledgePage() {
       {/* Knowledge Cards */}
       <SimpleGrid cols={3} mb="xl" breakpoints={[{ maxWidth: 'lg', cols: 2 }, { maxWidth: 'sm', cols: 1 }]}>
         {filteredKnowledge.map((item, index) => {
-          const Icon = item.icon;
+          const Icon = iconMap[item.icon] || IconBook;
           return (
             <Card 
               key={index} 
@@ -248,6 +352,7 @@ function KnowledgePage() {
                 size="compact-sm"
                 rightSection={<IconChevronRight size={14} />}
                 fullWidth
+                onClick={() => handleViewDetail(item)}
               >
                 查看详情
               </Button>
@@ -347,8 +452,9 @@ function KnowledgePage() {
           variant="gradient" 
           gradient={{ from: 'grape', to: 'pink' }}
           leftSection={<IconExternalLink size={18} />}
+          onClick={() => window.open('https://docs.openclaw.ai', '_blank')}
         >
-          访问完整知识库
+          访问官方文档
         </Button>
         <Button 
           variant="outline" 
@@ -358,6 +464,103 @@ function KnowledgePage() {
           记录学习笔记
         </Button>
       </Group>
+
+      {/* 文档详情弹窗 - 全屏 Drawer */}
+      <Drawer
+        opened={openedModal}
+        onClose={() => setOpenedModal(false)}
+        title={
+          <Group gap="xs">
+            {selectedDoc && (
+              <ThemeIcon size="md" radius="md" color={selectedDoc.color} variant="light">
+                {(() => {
+                  const Icon = iconMap[selectedDoc.icon] || IconBook;
+                  return <Icon size={18} />;
+                })()}
+              </ThemeIcon>
+            )}
+            <Title order={3}>{selectedDoc?.title}</Title>
+          </Group>
+        }
+        size="100%"
+        position="right"
+        styles={{
+          body: {
+            padding: 0,
+          },
+          header: {
+            padding: 'var(--mantine-spacing-md)',
+            borderBottom: '1px solid var(--mantine-color-gray-3)',
+          },
+        }}
+      >
+        {selectedDoc && (
+          <ScrollArea.Autosize mah="100vh" type="auto">
+            <Container size="md" py="xl" px="lg">
+              <Stack gap="md">
+                {/* 标签 */}
+                <Group gap="xs">
+                  {selectedDoc.tags.map((tag, i) => (
+                    <Badge key={i} variant="light" color={selectedDoc.color} size="lg">
+                      {tag}
+                    </Badge>
+                  ))}
+                </Group>
+                
+                <Divider my="md" />
+                
+                {/* 文档内容 */}
+                <Box style={{ 
+                  fontSize: '16px',
+                  lineHeight: '1.8',
+                }}>
+                  {renderMarkdown(selectedDoc.content)}
+                </Box>
+                
+                <Divider my="xl" />
+                
+                {/* 底部提示 */}
+                <Paper p="lg" radius="md" withBorder bg="gray.0">
+                  <Group gap="sm" mb="xs">
+                    <ThemeIcon size="sm" variant="light" color="blue">
+                      <IconBook size={16} />
+                    </ThemeIcon>
+                    <Text fw={600}>💡 提示</Text>
+                  </Group>
+                  <Text size="sm" c="dimmed">
+                    文档内容已集成到前端项目中，支持 Markdown 格式渲染。
+                  </Text>
+                </Paper>
+
+                {/* 操作按钮 */}
+                <Group justify="space-between" mt="xl">
+                  <Button 
+                    variant="outline" 
+                    color="gray"
+                    size="lg"
+                    onClick={() => setOpenedModal(false)}
+                  >
+                    关闭
+                  </Button>
+                  <Group gap="xs">
+                    <Button 
+                      variant="outline" 
+                      color={selectedDoc.color}
+                      size="lg"
+                      leftSection={<IconExternalLink size={16} />}
+                      component="a"
+                      href={`https://github.com/openclaw/openclaw`}
+                      target="_blank"
+                    >
+                      更多资源
+                    </Button>
+                  </Group>
+                </Group>
+              </Stack>
+            </Container>
+          </ScrollArea.Autosize>
+        )}
+      </Drawer>
     </div>
   );
 }

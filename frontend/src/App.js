@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { AppShell, Burger, Group, Title, Text, Container, ActionIcon, Badge, rem } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconHome2, IconBowl, IconMessageCircle2, IconSettings, IconBook } from '@tabler/icons-react';
+import { IconHome2, IconBowl, IconMessageCircle2, IconSettings, IconBook, IconCurrencyDollar } from '@tabler/icons-react';
 import axios from 'axios';
 import FoodPage from './pages/FoodPage';
 import MessagesPage from './pages/MessagesPage';
 import KnowledgePage from './pages/KnowledgePage';
+import PriceComparePage from './pages/PriceComparePage';
 
 function App() {
   const [opened, { toggle }] = useDisclosure();
@@ -20,6 +21,7 @@ function App() {
 
   const menuItems = [
     { key: 'food', label: '今天吃啥', icon: IconBowl, color: 'orange' },
+    { key: 'price-compare', label: '比价助手', icon: IconCurrencyDollar, color: 'green' },
     { key: 'messages', label: '留言板', icon: IconMessageCircle2, color: 'blue' },
     { key: 'knowledge', label: 'AI 知识库', icon: IconBook, color: 'grape' },
   ];
@@ -114,6 +116,7 @@ function App() {
       <AppShell.Main>
         <Container size="xl">
           {activeTab === 'food' && <FoodPage />}
+          {activeTab === 'price-compare' && <PriceComparePage />}
           {activeTab === 'messages' && <MessagesPage />}
           {activeTab === 'knowledge' && <KnowledgePage />}
         </Container>
